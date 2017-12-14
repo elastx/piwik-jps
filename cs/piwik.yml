@@ -1,0 +1,75 @@
+---
+jpsType: install
+description:
+  text: Open Analytics Platform
+  short: Open Analytics Platform
+
+categories:
+- apps/sales-and-marketing
+
+name: Piwik
+logo: https://raw.githubusercontent.com/elastx/piwik-jps/master/img/piwik.png
+
+globals:
+  DB_USER: jelastic-${fn.random}
+  DB_PASS: "${fn.password(20)}"
+  DB_NAME: piwik
+  PATH: https://raw.githubusercontent.com/elastx/piwik-jps/master
+
+ssl: true
+
+nodes:
+- image: jelastic/nginxphp:1.10.1-php-5.6.31
+  count: 1
+  cloudlets: 8
+  nodeGroup: "cp"
+  volumes:
+  - "/var/www/webroot/ROOT"
+
+- image: jelastic/mariadb:10.2.7
+  count: 1
+  cloudlets: 8
+  nodeGroup: "sqldb"
+
+onInstall:
+  - configurePHP
+  - installPiwik
+  - restartNginx
+  - setupDatabase
+
+actions:
+  configurePHP:
+    cmd[cp]:
+      - sed -i.bak s/\;extension=gd.so/extension=gd.so/g /etc/php.ini
+
+  installPiwik:
+    cmd[cp]:
+      - rm -rf /var/www/webroot/ROOT
+      - curl -o /var/www/webroot/piwik.zip https://builds.piwik.org/piwik.zip
+      - cd /var/www/webroot && unzip piwik.zip && mv piwik ROOT
+      - chown -R nginx:nginx /var/www/webroot/ROOT
+
+  restartNginx:
+    cmd[cp]:
+      - service nginx restart
+
+  setupDatabase:
+    cmd[sqldb]:
+      - wget ${globals.PATH}/scripts/setupUser.sh -O /tmp/setupUser.sh &>> /var/log/run.log
+      - bash /tmp/setupUser.sh ${globals.DB_USER} ${globals.DB_PASS} &>> /var/log/run.log
+      - rm /tmp/setupUser.sh
+
+success:
+  text: |
+    ## Piwik Installed
+
+    Next up is the setup!
+
+    Use these database credentials:
+
+    * **Database address:** ${nodes.sqldb[0].address}
+    * **Database user:** ${globals.DB_USER}
+    * **Database password:** ${globals.DB_PASS}
+    * **Database name:** ${globals.DB_NAME}
+
+    Leave other database settings as they are.
