@@ -41,6 +41,9 @@ actions:
   configurePHP:
     cmd[cp]:
       - sed -i.bak s/\;extension=gd.so/extension=gd.so/g /etc/php.ini
+      - sed -i.bak s/\;extension=geoip.so/extension=geoip.so/g /etc/php.ini
+      - sed -i.bak 's,^geoip.custom_directory.*,geoip.custom_directory = "/usr/share/GeoIP/",g' /etc/php.ini
+      - sed -i.bak 's/zlib.output_compression = Off/zlib.output_compression = Off\nalways_populate_raw_post_data=-1/g' /etc/php.ini
 
   installPiwik:
     cmd[cp]:
