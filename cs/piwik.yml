@@ -16,6 +16,29 @@ globals:
   DB_NAME: piwik
   PATH: https://raw.githubusercontent.com/elastx/piwik-jps/master
 
+settings:
+  fields:
+  - type: string
+    name: username
+    caption: User name
+    required: true
+  - type: string
+    name: userpassword
+    caption: Password
+    required: true
+  - type: string
+    name: email
+    caption: User email
+    required: true
+  - type: string
+    name: site_name
+    caption: Site name
+    required: true
+  - type: string
+    name: site_url
+    caption: Site URL
+    required: true
+
 ssl: true
 
 nodes:
@@ -36,6 +59,7 @@ onInstall:
   - installPiwik
   - restartNginx
   - setupDatabase
+  - setupPiwik
 
 actions:
   configurePHP:
@@ -61,6 +85,49 @@ actions:
       - wget ${globals.PATH}/scripts/setupUser.sh -O /tmp/setupUser.sh &>> /var/log/run.log
       - bash /tmp/setupUser.sh ${globals.DB_USER} ${globals.DB_PASS} &>> /var/log/run.log
       - rm /tmp/setupUser.sh
+      - mysql -u${globals.DB_USER} -p${globals.DB_PASS} -e 'CREATE DATABASE piwik;'
+
+  setupPiwik:
+    writeFile:
+      - nodeId: ${nodes.cp[0].id}
+        path: /var/www/webroot/install.json
+        body: |
+          {
+              "document_root": "/var/www/webroot/ROOT",
+              "login": "${settings.username}",
+              "password": "${settings.userpassword}",
+              "email": "${settings.email}",
+              "site_name": "${settings.site_name}",
+              "site_url": "${settings.site_url}",
+              "base_domain": "${env.domain}",
+              "session_save_handler": "dbtable",
+              "geo_provider": "geoip_pecl",
+              "database": {
+                  "host": "${nodes.cp[0].address}",
+                  "adapter": "Pdo\\Mysql",
+                  "username": "${globals.DB_USER}",
+                  "password": "${globals.DB_PASS}",
+                  "dbname": "piwik",
+                  "tables_prefix": "piwik_"
+              },
+              "privacy": {
+                  "anonymize_ip": false,
+                  "honor_do_not_track": false
+              },
+              "extras": {
+                  "General": {
+                      "enable_framed_pages": 1,
+                      "enable_framed_settings": 1
+                  },
+                  "Tracker": {
+                      "trust_visitors_cookies": 1,
+                      "use_third_party_id_cookie": 1
+                  }
+              }
+          }
+    cmd[cp]:
+      - wget ${globals.PATH}/scripts/install.php -O /tmp/install.php &>> /var/log/run.log
+      - php /var/www/webroot/install.php
 
 success:
   text: |
