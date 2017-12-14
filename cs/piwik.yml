@@ -11,6 +11,8 @@ name: Piwik
 logo: https://raw.githubusercontent.com/elastx/piwik-jps/master/img/piwik.png
 
 globals:
+  PIWIK_USER: piwik-${fn.random}
+  PIWIK_PASS: "${fn.password(20)}"
   DB_USER: jelastic-${fn.random}
   DB_PASS: "${fn.password(20)}"
   DB_NAME: piwik
@@ -19,16 +21,9 @@ globals:
 settings:
   fields:
   - type: string
-    name: username
-    caption: User name
-    required: true
-  - type: string
-    name: userpassword
-    caption: Password
-    required: true
-  - type: string
     name: email
     caption: User email
+    default: ${user.email}
     required: true
   - type: string
     name: site_name
@@ -59,7 +54,8 @@ onInstall:
   - installPiwik
   - restartNginx
   - setupDatabase
-  - setupPiwik
+  - preparePiwikManifest
+  - installPiwikAndFixPermissions
 
 actions:
   configurePHP:
@@ -74,7 +70,6 @@ actions:
       - rm -rf /var/www/webroot/ROOT
       - curl -o /var/www/webroot/piwik.zip https://builds.piwik.org/piwik.zip
       - cd /var/www/webroot && unzip piwik.zip && mv piwik ROOT
-      - chown -R nginx:nginx /var/www/webroot/ROOT
 
   restartNginx:
     cmd[cp]:
@@ -87,15 +82,15 @@ actions:
       - rm /tmp/setupUser.sh
       - mysql -u${globals.DB_USER} -p${globals.DB_PASS} -e 'CREATE DATABASE piwik;'
 
-  setupPiwik:
+  preparePiwikManifest:
     writeFile:
       - nodeId: ${nodes.cp[0].id}
         path: /var/www/webroot/install.json
         body: |
           {
               "document_root": "/var/www/webroot/ROOT",
-              "login": "${settings.username}",
-              "password": "${settings.userpassword}",
+              "login": "${globals.PIWIK_USER}",
+              "password": "${globals.PIWIK_PASS}",
               "email": "${settings.email}",
               "site_name": "${settings.site_name}",
               "site_url": "${settings.site_url}",
@@ -103,7 +98,7 @@ actions:
               "session_save_handler": "dbtable",
               "geo_provider": "geoip_pecl",
               "database": {
-                  "host": "${nodes.cp[0].address}",
+                  "host": "${nodes.sqldb[0].address}",
                   "adapter": "Pdo\\Mysql",
                   "username": "${globals.DB_USER}",
                   "password": "${globals.DB_PASS}",
@@ -125,21 +120,19 @@ actions:
                   }
               }
           }
+  installPiwikAndFixPermissions:
     cmd[cp]:
-      - wget ${globals.PATH}/scripts/install.php -O /tmp/install.php &>> /var/log/run.log
-      - php /var/www/webroot/install.php
+      - cat /var/www/webroot/install.json &>>/var/log/run.log
+      - wget ${globals.PATH}/scripts/install.php -O /var/www/webroot/install.php &>> /var/log/run.log
+      - cd /var/www/webroot && php /var/www/webroot/install.php &>>/var/log/run.log
+      - chown -R nginx:nginx /var/www/webroot/ROOT
+
 
 success:
   text: |
     ## Piwik Installed
 
-    Next up is the setup!
+    Use these credentials to login:
 
-    Use these database credentials:
-
-    * **Database address:** ${nodes.sqldb[0].address}
-    * **Database user:** ${globals.DB_USER}
-    * **Database password:** ${globals.DB_PASS}
-    * **Database name:** ${globals.DB_NAME}
-
-    Leave other database settings as they are.
+    * **Username:** ${globals.PIWIK_USER}
+    * **Password:** ${globals.PIWIK_PASS}
